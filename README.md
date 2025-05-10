@@ -56,6 +56,6 @@ root_shell = get_custom_object.chainsaw.shell
 ### Other Commands
 
 - `chainsaw run --ip <ip> --port <port>`: Attempts to crack the password of the remote service running on the specified IP and port. *Very slow*.
-- `chainsaw test --password <password>`: Tests a password against ChainSaw's password cracking algorithm. This is useful for testing the algorithm's accuracy, and for testing password strength.
+- `chainsaw test --test_pass <password>`: Tests a password against ChainSaw's password cracking algorithm. This is useful for testing the algorithm's accuracy, and for testing password strength.
 
 A number of other parameters, such as `--min/max-length`, `--order` and samples customization are available, but are not recommended for most users. The default values are based on the in-game implementation, and will crack any NPC generated password in the game.
