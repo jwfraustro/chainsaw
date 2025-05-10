@@ -1,0 +1,526 @@
+// ChainSaw - A Grey Hack script for cracking passwords using Markov chains
+// by NitroCynic
+// License: MIT - https://github.com/jwfraustro/chainsaw/blob/main/LICENSE
+import_code("data/samples.src")
+import_code("data/pregens.src")
+
+version = "1.0.0"
+
+in_script = false
+
+if get_custom_object.hasIndex("in_script") then
+	in_script = get_custom_object.in_script
+end if
+
+logo_str = "
+   _____ _           _        _____
+  / ____| |         (_)      / ____|
+ | |    | |__   __ _ _ _ __ | (___   __ ___      __
+ | |    | '_ \ / _` | | '_ \ \___ \ / _` \ \ /\ / /
+ | |____| | | | (_| | | | | |____) | (_| |\ V  V /
+  \_____|_| |_|\__,_|_|_| |_|_____/ \__,_| \_/\_/
+
+"
+logo_str = logo_str + "ChainSaw - by NitroCynic - The Markov Chain Password Cracker v" + version
+
+alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+alpha += alpha.lower
+
+testing = false
+testing_pass = "Dessnap"
+
+unit_test = false // Set to true to run unit tests
+
+list.unique = function
+	// Remove duplicates from an array
+	unique_array = []
+
+	for item in self
+		if unique_array.indexOf(item) == null then
+			unique_array.push(item)
+		end if
+	end for
+
+	return unique_array
+end function
+
+ChainSaw = {}
+
+// Target parameters
+ChainSaw.user = "root"
+ChainSaw.ip = ""
+ChainSaw.port = 22
+ChainSaw.password = ""
+ChainSaw.shell = null
+
+// Markov chain parameters
+ChainSaw.samples = samples
+ChainSaw.pregens = pregens
+ChainSaw.chains = {}
+ChainSaw.min_length = 3
+ChainSaw.max_length = 9
+ChainSaw.order = 3
+
+// Misc. parameters
+ChainSaw.LogLevel = "INFO"
+ChainSaw.version = version
+
+// Internal parameters & defaults
+ChainSaw.attempts = 0
+ChainSaw._logLevels = {
+	"DEBUG": 0,
+	"INFO": 1,
+	"WARN": 2,
+	"ERROR": 3,
+}
+
+ChainSaw.Log = function(level, message)
+
+	// Log messages to the console
+	if ChainSaw._logLevels[level] >= ChainSaw._logLevels[ChainSaw.LogLevel] then
+		out_str = "[ChainSaw] [" + level + "] " + message
+		if level == "ERROR" then
+			print("<color=red>" + out_str + "</color>")
+		else if level == "WARN" then
+			print("<color=yellow>" + out_str + "</color>")
+		else
+			print(out_str)
+		end if
+	end if
+end function
+
+ChainSaw.init = function // Initialize ChainSaw
+
+	ChainSaw.load_samples
+	ChainSaw.load_pregens
+	ChainSaw.load_chains
+
+end function
+
+ChainSaw.load_chains = function // Build the Markov chains from the given samples
+	ChainSaw.Log("DEBUG", "Building Markov chains...")
+	// Create chains
+	for text in ChainSaw.samples
+		for i in range(0, len(text) - ChainSaw.order - 1)
+			sub_text = text[i : i + ChainSaw.order]
+
+			if not ChainSaw.chains.hasIndex(sub_text) then
+				ChainSaw.chains[sub_text] = []
+			end if
+
+			next_char = text[i + ChainSaw.order]
+
+			// Nexchars are made unique here for cracking purposes,
+			// but for generating passwords, they should have duplicates
+			// for frequency probability.
+			if ChainSaw.chains[sub_text].indexOf(next_char) == null then
+				ChainSaw.chains[sub_text].push(next_char)
+			end if
+
+		end for
+	end for
+	ChainSaw.Log("DEBUG", len(ChainSaw.chains) + " chains created.")
+end function
+
+ChainSaw.load_samples = function // Build the Markov samples from the given text
+
+	ChainSaw.Log("DEBUG", "Building samples...")
+	ChainSaw.Log("DEBUG", "Using " + len(ChainSaw.samples) + " password samples.")
+	samples = ChainSaw.samples
+
+	// Clear the samples
+	ChainSaw.samples = []
+
+	// Initialize samples, excluding any that are too short for the given order
+	for text in samples
+		if len(text) >= ChainSaw.order + 1 then
+			ChainSaw.samples.push(text.upper)
+		else
+			ChainSaw.Log("WARN", "Sample '" + text + "' is too short for given order " + ChainSaw.order + ".")
+		end if
+	end for
+
+	ChainSaw.Log("DEBUG", len(ChainSaw.samples) + " samples loaded.")
+end function
+
+ChainSaw.load_pregens = function // Load the pregenerated passwords
+
+	ChainSaw.Log("DEBUG", "Loading pregenerated passwords...")
+	ChainSaw.Log("DEBUG", "Using " + len(ChainSaw.pregens) + " pregenerated passwords.")
+	pregens = ChainSaw.pregens
+
+	// Clear the pregens
+	ChainSaw.pregens = []
+
+	// Initialize pregens, excluding any that are too short for the minimum password length
+	for text in pregens
+		if len(text) >= ChainSaw.min_length and len(text) <= ChainSaw.max_length then
+			ChainSaw.pregens.push(text)
+		else
+			ChainSaw.Log("WARN", "Pregenerated password '" + text + "' not within min/max length boundaries: " + ChainSaw.min_length + " - " + ChainSaw.max_length + ".")
+		end if
+	end for
+
+end function
+
+
+ChainSaw.connect = function(password) // Connect to the specified service, or the local shell
+
+	if testing then
+		// If testing, use the test password
+		if password == testing_pass then
+			return "shell"
+		end if
+		return null
+	end if
+
+	// Connect to the service, either the local shell or a remote service
+	if ChainSaw.ip != "" and ChainSaw.port != null then
+		return get_shell.connect_service(
+			ChainSaw.ip,
+			ChainSaw.port,
+			ChainSaw.user,
+			password)
+	else
+		return get_shell(ChainSaw.user, password)
+	end if
+
+	return null
+end function
+
+ChainSaw.next_name = function // Generate a random name using the Markov chains
+
+	text = ""
+
+	num = floor(805)
+	desired_len = len(ChainSaw.samples[num])
+
+	start_idx = floor(rnd * (desired_len - ChainSaw.order))
+
+	text = ChainSaw.samples[num][start_idx : start_idx + ChainSaw.order]
+
+	while len(text) < desired_len
+		start_idx = len(text) - ChainSaw.order
+		sub_text = text[start_idx : start_idx + ChainSaw.order]
+
+		if ChainSaw.get_letter(sub_text) == "?" then
+			break
+		end if
+
+		text = "" + text + ChainSaw.get_letter(sub_text)
+
+	end while
+
+	text = text.lower
+
+	print("Generated password: " + text)
+
+	return text
+
+end function
+
+ChainSaw.get_letter = function(token)
+	// Get the next letter in the chain for the given token
+	if not ChainSaw.chains.hasIndex(token) then
+		return "?"
+	end if
+
+	next_chars = ChainSaw.chains[token]
+	num = floor(rnd * len(next_chars))
+	return next_chars[num]
+end function
+
+ChainSaw.recurse = function(token, max_length) // Recursively generate passwords using the Markov chains
+
+	// Recursivly generate passwords
+	password = token.lower
+	result = ChainSaw.connect(password)
+	ChainSaw.attempts = ChainSaw.attempts + 1 + 0 // prevent autoformat
+
+	if result != null then
+		print("<b>[ChainSaw] Password found: " + password + "</b>")
+		ChainSaw.set_password(password)
+		return result
+	else
+		upper_first_char = password[0].upper + password[1 : len(password)]
+		result = ChainSaw.connect(upper_first_char)
+		ChainSaw.attempts = ChainSaw.attempts + 1 + 0 // prevent autoformat
+		if result != null then
+			print("<b>[ChainSaw] Password found: " + upper_first_char + "</b>")
+			ChainSaw.set_password(upper_first_char)
+			return result
+		end if
+	end if
+
+	if len(token) >= max_length then
+		return null
+	end if
+
+	// get the index of the last token in the password
+	start_idx = len(token) - ChainSaw.order
+	sub_text = token[start_idx : start_idx + ChainSaw.order]
+
+	// get the unique transitions for the last token
+	// and generate a new password using the last token and the next letter
+	if not ChainSaw.chains.hasIndex(sub_text) then
+		return null
+	end if
+
+	next_chars = ChainSaw.chains[sub_text]
+	for next_char in next_chars
+		new_password = token + next_char
+		result = ChainSaw.recurse(new_password, max_length)
+
+		if result != null then
+			return result
+		end if
+	end for
+end function
+
+ChainSaw.PregenAttack = function // Use pregenerated passwords to crack the password
+
+	ChainSaw.Log("INFO", "Attacking with pregenerated passwords...")
+	for password in ChainSaw.pregens
+		result = ChainSaw.connect(password)
+		ChainSaw.attempts = ChainSaw.attempts + 1 + 0 // prevent autoformat
+		if result != null then
+			print("<b>[ChainSaw] Password found: " + password + "</b>")
+			ChainSaw.set_password(password)
+			return result
+		else
+			upper_first_char = password[0].upper + password[1 : len(password)]
+			result = ChainSaw.connect(upper_first_char)
+			ChainSaw.attempts = ChainSaw.attempts + 1 + 0 // prevent autoformat
+			if result != null then
+				print("<b>[ChainSaw] Password found: " + upper_first_char + "</b>")
+				ChainSaw.set_password(upper_first_char)
+				return result
+			end if
+		end if
+	end for
+
+	return null
+end function
+
+ChainSaw.crack = function(show_logo = true) // Determine an unknown password using the markov chains
+
+	if show_logo then
+		ChainSaw.Log("INFO", logo_str)
+
+		ChainSaw.Log("INFO", "VROOM!....")
+	end if
+	start_time = time
+
+	// Try the pregenerated passwords first
+	result = ChainSaw.PregenAttack
+	if result != null then
+		ChainSaw.set_result(result)
+		ChainSaw.Log("DEBUG", "Evaluated " + ChainSaw.attempts + " passwords.")
+		ChainSaw.Log("DEBUG", "Execution time: " + (time - start_time) + " seconds")
+		return result
+	end if
+
+	ChainSaw.Log("INFO", "No pregenerated passwords found.")
+	ChainSaw.Log("INFO", "Attacking with markov chains...")
+	for i in range(0, len(ChainSaw.chains.indexes) - 1)
+		token = ChainSaw.chains.indexes[i]
+		result = ChainSaw.recurse(token, ChainSaw.max_length)
+		if result != null then
+			ChainSaw.set_result(result)
+			ChainSaw.Log("DEBUG", "Evaluated " + ChainSaw.attempts + " passwords.")
+			ChainSaw.Log("DEBUG", "Execution time: " + (time - start_time) + " seconds")
+			return result
+		end if
+
+	end for
+
+end function
+
+ChainSaw.set_result = function(result)
+	ChainSaw.shell = result
+end function
+ChainSaw.set_password = function(password)
+	ChainSaw.password = password
+end function
+
+ChainSaw.parse_params = function(param_list) // parse command-line arguments into ChainSaw params
+
+	param_list = param_list[1 : len(param_list)]
+	ChainSaw.Log("DEBUG", "Parsing parameters...")
+	ChainSaw.Log("DEBUG", "Parameters: " + join(param_list, ", "))
+
+	for param in param_list
+
+		key = param.split("=")[0]
+		value = param.split("=")[1]
+
+		if key == "--loglevel" then
+			ChainSaw.LogLevel = value.upper
+			if not ChainSaw._logLevels.hasIndex(ChainSaw.LogLevel) then
+				print("Invalid log level: " + value)
+				print_help
+				return null
+			end if
+			ChainSaw.Log("DEBUG", "Log level: " + ChainSaw.LogLevel)
+
+		else if key == "--user" then
+			ChainSaw.user = value
+			ChainSaw.Log("DEBUG", "User: " + ChainSaw.user)
+
+		else if key == "--ip" then
+			ChainSaw.ip = value
+			ChainSaw.Log("DEBUG", "IP: " + ChainSaw.ip)
+
+		else if key == "--port" then
+			ChainSaw.port = value.to_int
+			ChainSaw.Log("DEBUG", "Port: " + ChainSaw.port)
+
+		else if key == "--min_length" then
+			ChainSaw.min_length = value.to_int
+			ChainSaw.Log("DEBUG", "Min length: " + ChainSaw.min_length)
+
+		else if key == "--max_length" then
+			ChainSaw.max_length = value.to_int
+			ChainSaw.Log("DEBUG", "Max length: " + ChainSaw.max_length)
+
+		else if key == "--order" then
+			ChainSaw.order = value.to_int
+			ChainSaw.Log("DEBUG", "Order: " + ChainSaw.order)
+
+		else if key == "--test_pass" then
+			globals.testing_pass = value
+			ChainSaw.Log("DEBUG", "Test password: " + globals.testing_pass)
+
+		else if key == "--help" or key == "-h" or key == "-help" or key == "-?" then
+			print_help
+			return null
+		else
+			continue
+		end if
+	end for
+
+end function
+
+ChainSaw.load = function // Load the script into GCO
+
+	get_custom_object.chainsaw = ChainSaw
+	if len(params) > 1 then
+		ChainSaw.parse_params(params[1 : len(params)])
+	end if
+	ChainSaw.Log("INFO", "ChainSaw loaded into GCO as 'chainsaw'.")
+	ChainSaw.Log("INFO", "Use 'chainsaw.init()' to initialize the script.")
+	ChainSaw.Log("INFO", "Use 'chainsaw.crack()' to run the script.")
+
+end function
+
+print_help = function // Print the available commands
+
+	print("Commands:")
+	for option in exec_params
+		print(char(9) + option.key + ":" + char(9) + option.value)
+	end for
+
+	print("Output:")
+	output_str = "
+	[Command]	[Output]			[Description]
+	[run]		----				(string) Password found.
+	[load]		ChainSaw.password	(string) Password found.
+	[load]		ChainSaw.shell		(shell) Shell object.
+	"
+
+	print(output_str)
+
+	print("Parameters:")
+	output_str = "
+	[Command]	[Parameter / GCO key]					[Default]	[Description]
+	[run/load]	--user/ChainSaw.user					'root'	 	User to connect/get shell as.
+	[run/load]	--ip/ChainSaw.ip						----	 	If provided, will connect to the specified IP address.
+	[run/load]	--port/ChainSaw.port					22		 	Port to connect to.
+	[run/load]	--min_length/ChainSaw.min_length	3		 	Minimum password length.
+	[run/load]	--max_length/ChainSaw.max_length	9		 	Maximum password length.
+	[run/load]	--order/ChainSaw.order					3		 	Order of the Markov chains.
+	[run/load]	--loglevel/ChainSaw.LogLevel		INFO	 	Log level. Options: INFO, WARN
+	[load]		ChainSaw.samples						Internal 	Samples to use for the Markov chains. Not recommended to change.
+	[load]		ChainSaw.pregens						Internal 	Pregenerated passwords for initial attack.
+	[load]		ChainSaw.password						Internal 	Password found.
+	[test]		--test_pass								Dessnap	 	Password to test against.
+	"
+
+	print(output_str)
+
+end function
+
+ChainSaw.unittest_parse_params = function // Unit test for the parse_params function
+	ChainSaw.Log("INFO", "Running unit test for parse_params...")
+	params = "unittest --user=test_user --ip=1.1.1.1 --port=99 --min_length=1 --max_length=10 --order=1 --loglevel=DEBUG --test_pass=test_pass"
+	ChainSaw.parse_params(params.split(" "))
+	if ChainSaw.user != "test_user" then
+		ChainSaw.Log("ERROR", "User " + ChainSaw.user + " != test_user")
+		return 
+	else if ChainSaw.ip != "1.1.1.1" then
+		ChainSaw.Log("ERROR", "IP " + ChainSaw.ip + " != 1.1.1.1")
+		return 
+	else if ChainSaw.port != 99 then
+		ChainSaw.Log("ERROR", "Port " + ChainSaw.port + " != 99")
+		return 
+	else if ChainSaw.min_length != 1 then
+		ChainSaw.Log("ERROR", "Min length " + ChainSaw.min_length + " != 1")
+		return 
+	else if ChainSaw.max_length != 10 then
+		ChainSaw.Log("ERROR", "Max length " + ChainSaw.max_length + " != 10")
+		return 
+	else if ChainSaw.order != 1 then
+		ChainSaw.Log("ERROR", "Order " + ChainSaw.order + " != 1")
+		return 
+	else if ChainSaw.LogLevel != "DEBUG" then
+		ChainSaw.Log("ERROR", "Log level " + ChainSaw.LogLevel + " != DEBUG")
+		return 
+	end if
+	ChainSaw.Log("INFO", "Unit test passed.")
+end function
+
+exec_params = {
+	"help": "Display help information",
+	"run": "Run the script -- Only outputs passwords",
+	"test": "Test the script -- Runs chainsaw against a test password",
+	"load": "Load the script into GCO -- Loads the script into get_custom_object, but does not run it",
+}
+
+if unit_test then
+	ChainSaw.unittest_parse_params
+	exit(0)
+end if
+
+if len(params) == 0 and not in_script then
+	print("Usage: chainsaw [command] [options]")
+	print("Commands:")
+	for option in exec_params
+		print(char(9) + option.key + ":" + char(9) + option.value)
+	end for
+	return 
+end if
+
+if len(params) > 0 and not in_script then
+	if params[0] == "help" then
+		print(logo_str)
+		print_help
+		return 
+	else if params[0] == "run" then
+		ChainSaw.parse_params(params)
+		ChainSaw.init
+		ChainSaw.crack
+		return 
+	else if params[0] == "test" then
+		testing = true
+		ChainSaw.parse_params(params)
+		ChainSaw.init
+		ChainSaw.crack
+		return 
+	else if params[0] == "load" then
+		ChainSaw.load
+		return 
+	end if
+end if
+
+
+
