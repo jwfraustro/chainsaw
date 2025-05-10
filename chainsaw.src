@@ -21,7 +21,8 @@ logo_str = "
   \_____|_| |_|\__,_|_|_| |_|_____/ \__,_| \_/\_/
 
 "
-logo_str = logo_str + "ChainSaw - by NitroCynic - The Markov Chain Password Cracker v" + version
+logo_str = logo_str + "ChainSaw - by NitroCynic - The Markov Chain Password Cracker v" + version + "\n"
+logo_str = logo_str + "Source at: https://github.com/jwfraustro/chainsaw/ \n" //no-format
 
 alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 alpha += alpha.lower
@@ -456,25 +457,25 @@ ChainSaw.unittest_parse_params = function // Unit test for the parse_params func
 	ChainSaw.parse_params(params.split(" "))
 	if ChainSaw.user != "test_user" then
 		ChainSaw.Log("ERROR", "User " + ChainSaw.user + " != test_user")
-		return 
+		return
 	else if ChainSaw.ip != "1.1.1.1" then
 		ChainSaw.Log("ERROR", "IP " + ChainSaw.ip + " != 1.1.1.1")
-		return 
+		return
 	else if ChainSaw.port != 99 then
 		ChainSaw.Log("ERROR", "Port " + ChainSaw.port + " != 99")
-		return 
+		return
 	else if ChainSaw.min_length != 1 then
 		ChainSaw.Log("ERROR", "Min length " + ChainSaw.min_length + " != 1")
-		return 
+		return
 	else if ChainSaw.max_length != 10 then
 		ChainSaw.Log("ERROR", "Max length " + ChainSaw.max_length + " != 10")
-		return 
+		return
 	else if ChainSaw.order != 1 then
 		ChainSaw.Log("ERROR", "Order " + ChainSaw.order + " != 1")
-		return 
+		return
 	else if ChainSaw.LogLevel != "DEBUG" then
 		ChainSaw.Log("ERROR", "Log level " + ChainSaw.LogLevel + " != DEBUG")
-		return 
+		return
 	end if
 	ChainSaw.Log("INFO", "Unit test passed.")
 end function
@@ -497,28 +498,28 @@ if len(params) == 0 and not in_script then
 	for option in exec_params
 		print(char(9) + option.key + ":" + char(9) + option.value)
 	end for
-	return 
+	return
 end if
 
 if len(params) > 0 and not in_script then
 	if params[0] == "help" then
 		print(logo_str)
 		print_help
-		return 
+		return
 	else if params[0] == "run" then
 		ChainSaw.parse_params(params)
 		ChainSaw.init
 		ChainSaw.crack
-		return 
+		return
 	else if params[0] == "test" then
 		testing = true
 		ChainSaw.parse_params(params)
 		ChainSaw.init
 		ChainSaw.crack
-		return 
+		return
 	else if params[0] == "load" then
 		ChainSaw.load
-		return 
+		return
 	end if
 end if
 
