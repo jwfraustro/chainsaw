@@ -6,6 +6,8 @@ ChainSaw is a Markov Chain-based password cracking tool for the video game "Grey
 - **RCE Support**: Can be used to self-escalate privileges by cracking and returning a root shell.
 - **Customizable**: Users can modify the Markov Chain parameters to suit their needs.
 
+![chainsaw](images/chainsaw.png)
+
 ## Installation
 
 1. Greybel: The tool can be eaily imported and built in Grey Hack using the Greybel VSCode extension / plugin. Details on the Greybel extension can be found [here](https://github.com/ayecue/greybel-vs)
