@@ -23,7 +23,7 @@ All parameters and commands ChainSaw uses are available in game by running `chai
 The `run` command can be used to crack passwords within the terminal. The command will not return a shell, but instead returns the password to standard output. By default, `chainsaw` will always attempt to crack the root user, but a different user can be specified using `--user`.
 
 ```bash
-chainsaw run --user <username>
+chainsaw run --user=<username>
 ```
 
 ### chainsaw load/run - RCE privilege escalation
@@ -57,7 +57,7 @@ root_shell = get_custom_object.chainsaw.shell
 
 ### Other Commands
 
-- `chainsaw run --ip <ip> --port <port>`: Attempts to crack the password of the remote service running on the specified IP and port. *Very slow*.
-- `chainsaw test --test_pass <password>`: Tests a password against ChainSaw's password cracking algorithm. This is useful for testing the algorithm's accuracy, and for testing password strength.
+- `chainsaw run --ip=<ip> --port=<port>`: Attempts to crack the password of the remote service running on the specified IP and port. *Very slow*.
+- `chainsaw test --test_pass=<password>`: Tests a password against ChainSaw's password cracking algorithm. This is useful for testing the algorithm's accuracy, and for testing password strength.
 
 A number of other parameters, such as `--min/max-length`, `--order` and samples customization are available, but are not recommended for most users. The default values are based on the in-game implementation, and will crack any NPC generated password in the game.
