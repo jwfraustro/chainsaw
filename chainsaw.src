@@ -352,6 +352,11 @@ ChainSaw.parse_params = function(param_list) // parse command-line arguments int
 
 	for param in param_list
 
+		if len(param.split("=")) != 2 then
+			ChainSaw.Log("WARN", "Parameters must be in the form of <key>=<value>")
+			exit
+		end if
+
 		key = param.split("=")[0]
 		value = param.split("=")[1]
 
