@@ -1,5 +1,5 @@
 # ChainSaw
-ChainSaw is a Markov Chain-based password cracking tool for the video game "Grey Hack". Currently capable of cracking any NPC generated password in the game in 20 seconds or less, with privilege escalation for free!
+ChainSaw is a Markov Chain-based password cracking tool for the video game "Grey Hack". Currently capable of cracking any NPC generated password in the game, with privilege escalation for free!
 
 ## Features
 - **Markov Chain Password Cracking**: Utilizes the same in-game Markov Chain algorithm used in Grey Hack to generate password guesses.
