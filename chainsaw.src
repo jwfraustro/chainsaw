@@ -58,6 +58,8 @@ ChainSaw.shell = null
 ChainSaw.samples = samples
 ChainSaw.pregens = pregens
 ChainSaw.chains = {}
+ChainSaw.trigram_frequencies = {}
+ChainSaw.optimize_chains = false // potential optimzation by sorting trigrams by frequency
 ChainSaw.min_length = 3
 ChainSaw.max_length = 9
 ChainSaw.order = 3
@@ -95,6 +97,10 @@ ChainSaw.init = function // Initialize ChainSaw
 	ChainSaw.load_samples
 	ChainSaw.load_pregens
 	ChainSaw.load_chains
+	if ChainSaw.optimize_chains then
+		ChainSaw.Log("DEBUG", "Optimizing chains by frequency...")
+		ChainSaw.sort_chains_by_frequency
+	end if
 
 end function
 
@@ -142,6 +148,75 @@ ChainSaw.load_samples = function // Build the Markov samples from the given text
 	end for
 
 	ChainSaw.Log("DEBUG", len(ChainSaw.samples) + " samples loaded.")
+end function
+
+ChainSaw.calculate_trigram_frequencies = function()
+    // Calculate how often each trigram appears in samples
+    ChainSaw.Log("DEBUG", "Calculating trigram frequencies...")
+
+    frequencies = {}
+
+    for sample in ChainSaw.samples
+        for i in range(0, len(sample) - ChainSaw.order - 1)
+            trigram = sample[i : i + ChainSaw.order]
+
+            if not frequencies.hasIndex(trigram) then
+                frequencies[trigram] = 0
+            end if
+
+            frequencies[trigram] = frequencies[trigram] + 1
+        end for
+    end for
+
+    ChainSaw.trigram_frequencies = frequencies
+    ChainSaw.Log("DEBUG", "Calculated frequencies for " + len(frequencies) + " trigrams")
+end function
+
+ChainSaw.sort_chains_by_frequency = function()
+    // Sort chain indexes by frequency (most common first)
+    ChainSaw.Log("DEBUG", "Sorting chains by frequency...")
+
+    if ChainSaw.trigram_frequencies == null then
+        ChainSaw.calculate_trigram_frequencies
+    end if
+
+    // Create sortable array
+    sortable = []
+    for trigram in ChainSaw.chains.indexes
+        freq = 0
+        if ChainSaw.trigram_frequencies.hasIndex(trigram) then
+            freq = ChainSaw.trigram_frequencies[trigram]
+        end if
+
+        sortable.push({"trigram": trigram, "frequency": freq})
+    end for
+
+    // Sort by frequency (descending)
+    sortable = ChainSaw.sort_by_frequency(sortable)
+
+    // Replace chain indexes with sorted version
+    sorted_indexes = []
+    for item in sortable
+        sorted_indexes.push(item.trigram)
+    end for
+
+    ChainSaw.chains.indexes = sorted_indexes
+    ChainSaw.Log("DEBUG", "Chains sorted by frequency")
+end function
+
+ChainSaw.sort_by_frequency = function(arr)
+    // Bubble sort by frequency (descending)
+    n = len(arr)
+    for i in range(0, n - 2)
+        for j in range(0, n - i - 2)
+            if arr[j].frequency < arr[j + 1].frequency then
+                temp = arr[j]
+                arr[j] = arr[j + 1]
+                arr[j + 1] = temp
+            end if
+        end for
+    end for
+    return arr
 end function
 
 ChainSaw.load_pregens = function // Load the pregenerated passwords
@@ -397,6 +472,11 @@ ChainSaw.parse_params = function(param_list) // parse command-line arguments int
 			globals.testing_pass = value
 			ChainSaw.Log("DEBUG", "Test password: " + globals.testing_pass)
 
+		else if key == "--optimize_chains" then
+			if value.lower == "true" or value.lower == "1" then
+				ChainSaw.optimize_chains = true
+				ChainSaw.Log("DEBUG", "Optimize chains by frequency: " + ChainSaw.optimize_chains)
+			end if
 		else if key == "--help" or key == "-h" or key == "-help" or key == "-?" then
 			print_help
 			return null
@@ -446,6 +526,7 @@ print_help = function // Print the available commands
 	[run/load]	--max_length/ChainSaw.max_length	9		 	Maximum password length.
 	[run/load]	--order/ChainSaw.order					3		 	Order of the Markov chains.
 	[run/load]	--loglevel/ChainSaw.LogLevel		INFO	 	Log level. Options: INFO, WARN
+	[run/load]	--optimize_chains/ChainSaw.optimize_chains	false	Optimize chains by frequency. May speed up cracking.
 	[load]		ChainSaw.samples						Internal 	Samples to use for the Markov chains. Not recommended to change.
 	[load]		ChainSaw.pregens						Internal 	Pregenerated passwords for initial attack.
 	[load]		ChainSaw.password						Internal 	Password found.
@@ -458,7 +539,7 @@ end function
 
 ChainSaw.unittest_parse_params = function // Unit test for the parse_params function
 	ChainSaw.Log("INFO", "Running unit test for parse_params...")
-	params = "unittest --user=test_user --ip=1.1.1.1 --port=99 --min_length=1 --max_length=10 --order=1 --loglevel=DEBUG --test_pass=test_pass"
+	params = "unittest --user=test_user --ip=1.1.1.1 --port=99 --min_length=1 --max_length=10 --order=1 --loglevel=DEBUG --test_pass=test_pass --optimize_chains=true"
 	ChainSaw.parse_params(params.split(" "))
 	if ChainSaw.user != "test_user" then
 		ChainSaw.Log("ERROR", "User " + ChainSaw.user + " != test_user")
@@ -480,6 +561,12 @@ ChainSaw.unittest_parse_params = function // Unit test for the parse_params func
 		return
 	else if ChainSaw.LogLevel != "DEBUG" then
 		ChainSaw.Log("ERROR", "Log level " + ChainSaw.LogLevel + " != DEBUG")
+		return
+	else if globals.testing_pass != "test_pass" then
+		ChainSaw.Log("ERROR", "Test password " + globals.testing_pass + " != test_pass")
+		return
+	else if ChainSaw.optimize_chains != true then
+		ChainSaw.Log("ERROR", "Optimize chains " + ChainSaw.optimize_chains.to_string + " != true")
 		return
 	end if
 	ChainSaw.Log("INFO", "Unit test passed.")
